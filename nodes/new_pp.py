@@ -12,8 +12,9 @@ import rospy
 # importacao MoveIt e TF
 import moveit_commander
 
-from moveit_commander import MoveGroupCommander
-from tf.transformations import quaternion_from_euler
+from moveit_commander import MoveGroupCommander, RobotCommander
+import tf.transformations as tf
+
 
 import random
 
@@ -24,6 +25,8 @@ from tf2_geometry_msgs import tf2_geometry_msgs
 from moveit_msgs.msg import CollisionObject, DisplayTrajectory, Grasp, PlaceLocation
 from moveit_msgs.srv import ApplyPlanningScene
 from geometry_msgs.msg import Quaternion, Pose, Vector3
+import geometry_msgs.msg as gm
+
 
 ## constantes com os valores de posicao do objeto a ser definido como objetivo do pick and place
 # posicao central: x = 0.5, y = 0, z = 0.5
@@ -38,16 +41,45 @@ class Position:
     self.y = y
     self.z = z
 
+def rotate_orientation_quaternion(orientation: Quaternion, axis_vector: Vector3, angle: float) -> Quaternion:
+    # Convert Quaternion to list representation
+    orientation_list = [orientation.x, orientation.y, orientation.z, orientation.w]
+
+    # Convert Vector3 to tuple representation
+    axis_vector_tuple = (axis_vector.x, axis_vector.y, axis_vector.z)
+
+    # Create a quaternion representing the rotation
+    rotation_quaternion = tf.quaternion_about_axis(angle, axis_vector_tuple)
+
+    # Apply the rotation to the original orientation quaternion
+    rotated_quaternion = tf.quaternion_multiply(rotation_quaternion, orientation_list)
+
+    # Normalize the resulting quaternion
+    rotated_quaternion = tf.unit_vector(rotated_quaternion)
+
+    # Create a Quaternion object from the rotated quaternion
+    rotated_orientation = Quaternion()
+    rotated_orientation.x = rotated_quaternion[0]
+    rotated_orientation.y = rotated_quaternion[1]
+    rotated_orientation.z = rotated_quaternion[2]
+    rotated_orientation.w = rotated_quaternion[3]
+
+    # Return the rotated Quaternion
+    return rotated_orientation
+
+
 # constroi um vetor de posicoes
 target_object_positions = []
 CURRENT_POSITION_INDEX = 0
 
 DIMENSOES_CUBO = Vector3(0.07,0.07,0.07)
 POSICAO_CUBO = Position(0.0, 0.5, 0.3)
+POSICAO_MESA2 = Position(0,-0.5,0.136434)
+DIMENSOES_MESA2 = Vector3(0.399110, 0.399110, 0.272868)
 
 def generate_poses(num_poses:int,basepose:Pose) -> list:
     poses = []
-    VARIATION = 0.07
+    VARIATION = 0.002
     for _ in range(num_poses):
         # Definir coordenadas x, y, z
         pose = deepcopy(basepose)
@@ -108,8 +140,8 @@ def close_gripper(posture):
     # seta os dedos para fechar
     posture.points = [JointTrajectoryPoint()]
     posture.points[0].positions = [float for i in range(2)]
-    posture.points[0].positions[0] = 0.00
-    posture.points[0].positions[1] = 0.00
+    posture.points[0].positions[0] = 0.035
+    posture.points[0].positions[1] = 0.035
     posture.points[0].time_from_start = rospy.Duration(0.5)
 
 # metodo responsavel por pegar o objeto
@@ -121,18 +153,18 @@ def pick(move_group : MoveGroupCommander):
     Group : moveit_commander.RobotCommander
                     Moveit_commander move group.
     """
-    NUMERO_PEGADAS = 500
-    DISTANCIA_SEGURANCA = 0.01
-    DISTANCIA_LINK_EFETOR = 0.05
+    NUMERO_PEGADAS = 10
+    DISTANCIA_SEGURANCA = 0.03
+    DISTANCIA_LINK_EFETOR = 0.058
     hand_pose = move_group.get_current_pose("panda_link7").pose
-    base_pose = Pose()
+    ref_pose = Pose()
     # Usa a posição do cubo como referencia
-    base_pose.position = deepcopy(POSICAO_CUBO)
-    base_pose.position.z += DIMENSOES_CUBO.z/2 + DISTANCIA_SEGURANCA + DISTANCIA_LINK_EFETOR
+    ref_pose.position = deepcopy(POSICAO_CUBO)
+    ref_pose.position.z += DIMENSOES_CUBO.z/2 + DISTANCIA_SEGURANCA + DISTANCIA_LINK_EFETOR
     # Usa da orientação original da mão
-    base_pose.orientation = hand_pose.orientation
+    ref_pose.orientation = hand_pose.orientation
 
-    poselist = generate_poses(NUMERO_PEGADAS,base_pose)
+    poselist = generate_poses(NUMERO_PEGADAS,ref_pose)
     # cria um vetor de pegadas a serem tentadas mas atualmente apenas uma unica pegada é executada
     grasps = [Grasp() for i in range(NUMERO_PEGADAS)]
 
@@ -146,16 +178,16 @@ def pick(move_group : MoveGroupCommander):
         grasp.pre_grasp_approach.direction.header.frame_id = "panda_link0"
         # a direcao e setada como eixo x positivo
         grasp.pre_grasp_approach.direction.vector.z = -1.0
-        grasp.pre_grasp_approach.min_distance = 0.095
-        grasp.pre_grasp_approach.desired_distance = 0.115
+        grasp.pre_grasp_approach.min_distance = 0.06
+        grasp.pre_grasp_approach.desired_distance = 0.07
 
         ## Setando o recuo pos pegada
         # definindo com relação ao frame_id
         grasp.post_grasp_retreat.direction.header.frame_id = "panda_link0"
         # a direcao e setada como eixo z positivo
         grasp.post_grasp_retreat.direction.vector.z = 1.0
-        grasp.post_grasp_retreat.min_distance = 0.1
-        grasp.post_grasp_retreat.desired_distance = 0.25
+        grasp.post_grasp_retreat.min_distance = 0.05
+        grasp.post_grasp_retreat.desired_distance = 0.08
 
         ## Setando a postura do efetor final antes da pegada
         open_gripper(grasp.pre_grasp_posture)
@@ -175,42 +207,41 @@ def place(group):
     Parametros: 
     ----------
     Group : moveit_commander.RobotCommander
-                    Moveit_commander move group.
+                    Moveit_commander move group
+                
     """
-
-    # cria um vetor de lugares para tentar colocar o objeto manipulado, porém aqui será somente um lugar
+    DISTANCIA_SEGURANCA = 0.03
+    DISTANCIA_LINK_EFETOR = 0.058
+     # Usa a posição da mesa 2 como referencia para o place
+    ref_pose = Pose()
+    hand_pose = move_group.get_current_pose("panda_link7").pose
+    ref_pose.position = deepcopy(POSICAO_MESA2)
+    ref_pose.position.z += DIMENSOES_MESA2.z/2 +DIMENSOES_CUBO.z/2+ DISTANCIA_SEGURANCA + DISTANCIA_LINK_EFETOR
+    # Usa da orientação original da mão
+    #orientation = quaternion_from_euler(0, 0, math.pi / 2)
+    ref_pose.orientation = hand_pose.orientation
+    eixoz = Vector3(0,0,1)
+    #retorna a orientação do panda hand rotacionada em 180 no eixo z
+    ref_pose.orientation = rotate_orientation_quaternion(ref_pose.orientation,eixoz,math.pi)
+    #vetor de lugares para tentar colocar o objeto manipulado, porém aqui será somente um lugar
     place_location = [PlaceLocation() for i in range(1)]
 
-    ###############################################################################
+    
     # defindo a pose para se colocar o objeto, i.e, onde e como colocá-lo
     place_location[0].place_pose.header.frame_id = "panda_link0"
-    orientation = quaternion_from_euler(0, 0, math.pi / 2)
-    place_location[0].place_pose.pose.orientation.x = orientation[0]
-    place_location[0].place_pose.pose.orientation.y = orientation[1]
-    place_location[0].place_pose.pose.orientation.z = orientation[2]
-    place_location[0].place_pose.pose.orientation.w = orientation[3]
-
-    place_location[0].place_pose.pose.position.x = 0
-    place_location[0].place_pose.pose.position.y = 0.5
-    place_location[0].place_pose.pose.position.z = 0.136434
-    ################################################################################
+    place_location[0].place_pose.pose = ref_pose
+    
 
     # estabelecendo a abordagem pre-place em relação ao frame_id com a direção em z negativa 
     place_location[0].pre_place_approach.direction.header.frame_id = "panda_link0"
-    place_location[0].pre_place_approach.direction.vector.z = (
-        -1.0
-    ) 
-    place_location[0].pre_place_approach.min_distance = 0.095
+    place_location[0].pre_place_approach.direction.vector.z = -1.0
+    place_location[0].pre_place_approach.min_distance = 0.05
     place_location[0].pre_place_approach.desired_distance = 0.115
 
     # estabelecendo o recuo post-grasp em relaçaõ ao frame_id
     # direção x é negativa
     place_location[0].post_place_retreat.direction.header.frame_id = "panda_link0"
-    place_location[
-        0
-    ].post_place_retreat.direction.vector.y = (
-        -1.0
-    )  
+    place_location[0].post_place_retreat.direction.vector.z = 1.0
     place_location[0].post_place_retreat.min_distance = 0.1
     place_location[0].post_place_retreat.desired_distance = 0.25
 
@@ -302,10 +333,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # cria um robot commander
-    robot = moveit_commander.RobotCommander(
+    robot = RobotCommander(
         robot_description="robot_description", ns="/"
     )
     rospy.logdebug("Robot Groups: %s", robot.get_group_names())
+    print("Robot Groups: %s", robot.get_group_names())
 
     # pegando informação sobre o mundo e atualizando o entendimento que o robo tem do mundo
     move_group = robot.get_group("panda_arm")
@@ -317,6 +349,10 @@ if __name__ == "__main__":
 
     # especificando o planejador de trajetorias que queremos usar
     move_group.set_planner_id("TRRTkConfigDefault")
+    robot.get_group("panda_arm").set_goal_position_tolerance(0.01)
+    robot.get_group("panda_hand").set_goal_position_tolerance(0.01)
+    robot.get_group("panda_manipulator").set_goal_position_tolerance(0.01)
+
 
     # cria um DisplayTrajectory que é um no publicador do ROS para mostrar o planejamento no RViz
     display_trajectory_publisher = rospy.Publisher(
@@ -344,6 +380,8 @@ if __name__ == "__main__":
 
     # coloca o objeto 
     place(move_group)
+
+    #move_group.set_named_target('ready')
 
     # imprimindo o tempo que levou a execucao menos o delay forçado de 1 segundo
     print("position %s: x=%s, y=%s, z=%s | --- %s seconds ---" % (
