@@ -11,11 +11,10 @@ import rospy
 
 # importacao MoveIt e TF
 import moveit_commander
-
 from moveit_commander import MoveGroupCommander, RobotCommander
 import tf.transformations as tf
 
-
+#usada para gerar as poses
 import random
 
 # importacao msgs and srvs
@@ -27,13 +26,6 @@ from moveit_msgs.srv import ApplyPlanningScene
 from geometry_msgs.msg import Quaternion, Pose, Vector3
 import geometry_msgs.msg as gm
 
-
-## constantes com os valores de posicao do objeto a ser definido como objetivo do pick and place
-# posicao central: x = 0.5, y = 0, z = 0.5
-# range de posicoes possiveis na coordenada X: 0.47 ~ 0.65
-# range de posicoes possiveis na coordenada Y: 0.15 ~ -0.14
-# coordenada Z = 0.5 (fixo)
-
 # classe que define um objeto posicao
 class Position:
   def __init__(self, x, y, z):
@@ -41,6 +33,7 @@ class Position:
     self.y = y
     self.z = z
 
+#funcao que rotaciona um eixo, dada uma orientacao, um vetor (x,y,z) e o angulo de rotacao 
 def rotate_orientation_quaternion(orientation: Quaternion, axis_vector: Vector3, angle: float) -> Quaternion:
     # Convert Quaternion to list representation
     orientation_list = [orientation.x, orientation.y, orientation.z, orientation.w]
@@ -72,11 +65,15 @@ def rotate_orientation_quaternion(orientation: Quaternion, axis_vector: Vector3,
 target_object_positions = []
 CURRENT_POSITION_INDEX = 0
 
+#parametros que sao usados nas consfiguracoes de pre e pos grasp
+#dimensoes do objeto alvo
 DIMENSOES_CUBO = Vector3(0.07,0.07,0.07)
 POSICAO_CUBO = Position(0.0, 0.5, 0.3)
+#posicao que o objeto será colocado
 POSICAO_MESA2 = Position(0,-0.5,0.136434)
 DIMENSOES_MESA2 = Vector3(0.399110, 0.399110, 0.272868)
 
+#funcao que gera um numero escolhido de poses, dada uma pose de referência
 def generate_poses(num_poses:int,basepose:Pose) -> list:
     poses = []
     VARIATION = 0.002
