@@ -207,13 +207,13 @@ def place(group):
                     Moveit_commander move group
                 
     """
-    DISTANCIA_SEGURANCA = 0.03
-    DISTANCIA_LINK_EFETOR = 0.058
+    DISTANCIA_SEGURANCA = 0.0005
+    DISTANCIA_LINK_EFETOR = 0.028
      # Usa a posição da mesa 2 como referencia para o place
     ref_pose = Pose()
     hand_pose = move_group.get_current_pose("panda_link0").pose
     ref_pose.position = deepcopy(POSICAO_MESA2)
-    ref_pose.position.z += DIMENSOES_MESA2.z/2 +DIMENSOES_CUBO.z/2+ DISTANCIA_SEGURANCA + DISTANCIA_LINK_EFETOR
+    ref_pose.position.z += DIMENSOES_MESA2.z/2 +DIMENSOES_CUBO.z/2+ DISTANCIA_SEGURANCA
     # Usa da orientação original da mão
     #orientation = quaternion_from_euler(0, 0, math.pi / 2)
     ref_pose.orientation = deepcopy(hand_pose.orientation)
