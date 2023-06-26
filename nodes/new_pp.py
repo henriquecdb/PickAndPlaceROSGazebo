@@ -33,34 +33,6 @@ class Position:
     self.y = y
     self.z = z
 
-#funcao que rotaciona um eixo, dada uma orientacao, um vetor (x,y,z) e o angulo de rotacao 
-def rotate_orientation_quaternion(orientation: Quaternion, axis_vector: Vector3, angle: float) -> Quaternion:
-    # Convert Quaternion to list representation
-    orientation_list = [orientation.x, orientation.y, orientation.z, orientation.w]
-
-    # Convert Vector3 to tuple representation
-    axis_vector_tuple = (axis_vector.x, axis_vector.y, axis_vector.z)
-
-    # Create a quaternion representing the rotation
-    rotation_quaternion = tf.quaternion_about_axis(angle, axis_vector_tuple)
-
-    # Apply the rotation to the original orientation quaternion
-    rotated_quaternion = tf.quaternion_multiply(rotation_quaternion, orientation_list)
-
-    # Normalize the resulting quaternion
-    rotated_quaternion = tf.unit_vector(rotated_quaternion)
-
-    # Create a Quaternion object from the rotated quaternion
-    rotated_orientation = Quaternion()
-    rotated_orientation.x = rotated_quaternion[0]
-    rotated_orientation.y = rotated_quaternion[1]
-    rotated_orientation.z = rotated_quaternion[2]
-    rotated_orientation.w = rotated_quaternion[3]
-
-    # Return the rotated Quaternion
-    return rotated_orientation
-
-
 # constroi um vetor de posicoes
 target_object_positions = []
 CURRENT_POSITION_INDEX = 0
@@ -73,15 +45,18 @@ POSICAO_CUBO = Position(0.0, 0.5, 0.3)
 POSICAO_MESA2 = Position(0,-0.5,0.136434)
 DIMENSOES_MESA2 = Vector3(0.399110, 0.399110, 0.272868)
 
-#funcao que gera um numero escolhido de poses, dada uma pose de referência
+#funcao que gera um numero escolhido de poses, dada uma posicao conhecida 
+#de um objeto
 def generate_poses(num_poses:int,basepose:Pose) -> list:
     poses = []
     VARIATION = 0.002
     for _ in range(num_poses):
         # Definir coordenadas x, y, z
         pose = deepcopy(basepose)
-        pose.position.x += random.uniform(-VARIATION, VARIATION) # Intervalo de coordenadas x da mesa
-        pose.position.y += random.uniform(-VARIATION, VARIATION) # Intervalo de coordenadas y da mesa
+        # Intervalo de coordenadas x da mesa
+        pose.position.x += random.uniform(-VARIATION, VARIATION) 
+        # Intervalo de coordenadas y da mesa
+        pose.position.y += random.uniform(-VARIATION, VARIATION) 
         
         poses.append(pose)
     
@@ -91,12 +66,6 @@ def generate_poses(num_poses:int,basepose:Pose) -> list:
 # carrega todas posicoes a serem testadas dentro do vetor
 def load_all_positions():
   target_object_positions.append(POSICAO_CUBO) 
-#   target_object_positions.append(Position(0.01, 0.51, 0.29)) 
-#   target_object_positions.append(Position(0.0, 0.49, 0.28)) 
-#   target_object_positions.append(Position(0.0, 0.48, 0.31)) 
-#   target_object_positions.append(Position(0.0, 0.53, 0.32)) 
-  
-
 
 # constante com o nome do objeto que sera manipulado
 OBJECT_TARGET_NAME = "box"
@@ -137,8 +106,8 @@ def close_gripper(posture):
     # seta os dedos para fechar
     posture.points = [JointTrajectoryPoint()]
     posture.points[0].positions = [float for i in range(2)]
-    posture.points[0].positions[0] = 0.0343
-    posture.points[0].positions[1] = 0.0343
+    posture.points[0].positions[0] = 0.0345
+    posture.points[0].positions[1] = 0.0345
     posture.points[0].time_from_start = rospy.Duration(0.5)
 
 # metodo responsavel por pegar o objeto
@@ -150,6 +119,7 @@ def pick(move_group : MoveGroupCommander):
     Group : moveit_commander.RobotCommander
                     Moveit_commander move group.
     """
+
     NUMERO_PEGADAS = 10
     DISTANCIA_SEGURANCA = 0.03
     DISTANCIA_LINK_EFETOR = 0.058
@@ -161,8 +131,10 @@ def pick(move_group : MoveGroupCommander):
     # Usa da orientação original da mão
     ref_pose.orientation = hand_pose.orientation
 
+    #chama a funcao geradora de poses
     poselist = generate_poses(NUMERO_PEGADAS,ref_pose)
-    # cria um vetor de pegadas a serem tentadas mas atualmente apenas uma unica pegada é executada
+    # cria um vetor do tipo Grasp() de pegadas a serem tentadas
+    # variando somente o x e o y, setando a direcao de pegada como "-z"
     grasps = [Grasp() for i in range(NUMERO_PEGADAS)]
 
     for i,grasp in enumerate(grasps):
@@ -173,7 +145,7 @@ def pick(move_group : MoveGroupCommander):
         ## Setando a aplicacao de pre pegada
         # definindo com relação ao frame_id
         grasp.pre_grasp_approach.direction.header.frame_id = "panda_link0"
-        # a direcao e setada como eixo x positivo
+        # a direcao e setada como eixo z negativo (pega o cubo por cima)
         grasp.pre_grasp_approach.direction.vector.z = -1.0
         grasp.pre_grasp_approach.min_distance = 0.06
         grasp.pre_grasp_approach.desired_distance = 0.07
@@ -211,20 +183,18 @@ def place(group):
     DISTANCIA_LINK_EFETOR = 0.028
      # Usa a posição da mesa 2 como referencia para o place
     ref_pose = Pose()
-    hand_pose = move_group.get_current_pose("panda_link0").pose
+    base_pose = move_group.get_current_pose("panda_link0").pose
     ref_pose.position = deepcopy(POSICAO_MESA2)
     ref_pose.position.z += DIMENSOES_MESA2.z/2 +DIMENSOES_CUBO.z/2+ DISTANCIA_SEGURANCA
+   
     # Usa da orientação original da mão
-    #orientation = quaternion_from_euler(0, 0, math.pi / 2)
-    ref_pose.orientation = deepcopy(hand_pose.orientation)
-    #eixoz = Vector3(0,0,1)
-    #retorna a orientação do panda hand rotacionada em 180 no eixo z
-    #ref_pose.orientation = rotate_orientation_quaternion(ref_pose.orientation,eixoz,-math.pi/2)
-    #vetor de lugares para tentar colocar o objeto manipulado, porém aqui será somente um lugar
+    ref_pose.orientation = deepcopy(base_pose.orientation)
+    #vetor de lugares para tentar colocar o objeto manipulado na mesa 2
+    #em uma posicao já conhecida (não tenta várias posições)
     place_location = [PlaceLocation() for i in range(1)]
 
     
-    # defindo a pose para se colocar o objeto, i.e, onde e como colocá-lo
+    # defindo a pose para se colocar o objeto, onde e como colocá-lo
     place_location[0].place_pose.header.frame_id = "panda_link0"
     place_location[0].place_pose.pose = ref_pose
     
@@ -254,17 +224,17 @@ def place(group):
 
 def add_collision_objects(planning_scene_interface):
 
-    # Aqui será criado os três objetos que estão no cenário. Duas "mesas" e um "paralelepídeo" que será o objeto que se deseja
-    # mover
+    # Aqui será criado os três objetos que estão no cenário. Duas "mesas" e um "cubo" que será 
+    # o objeto que se deseja mover
     collision_objects_names = [str for i in range(3)]
     collision_object_sizes = [str for i in range(3)]
     collision_objects = [PoseStamped() for i in range(3)]
 
     ## Esse trecho de codigo e responsavel por setar nome, frame_id, tamanho e posicao de um objeto no cenário
-    # adiciona a primeira mesa
+    # adiciona a segunda mesa
     collision_objects_names[0] = "table2"
     collision_objects[0].header.frame_id = "panda_link0"
-    # define as dimensões da primeira mesa
+    # define as dimensões da segunda mesa
     collision_object_sizes[0] = (0.399110, 0.399110, 0.272868)  
     # define a pose da mesa
     collision_objects[0].pose.position.x = 0.0
@@ -272,7 +242,8 @@ def add_collision_objects(planning_scene_interface):
     collision_objects[0].pose.position.z = 0.136434
 
     ##########################################################
-    # aqui será repetido o processo acima para inserir no cenário a segunda mesa
+    # aqui será repetido o processo acima para inserir no cenário a primeira mesa
+    # que o cubo está em cima
     collision_objects_names[1] = "table1"
     collision_objects[1].header.frame_id = "panda_link0"
     collision_object_sizes[1] = (0.399110, 0.399110, 0.272871)   
@@ -280,6 +251,7 @@ def add_collision_objects(planning_scene_interface):
     collision_objects[1].pose.position.y = 0.5
     collision_objects[1].pose.position.z = 0.136434
     ##########################################################
+
 
     ## Inserindo o objeto que vai ser manipulado pelo braço no cenário
     collision_objects_names[2] = OBJECT_TARGET_NAME
