@@ -137,8 +137,8 @@ def close_gripper(posture):
     # seta os dedos para fechar
     posture.points = [JointTrajectoryPoint()]
     posture.points[0].positions = [float for i in range(2)]
-    posture.points[0].positions[0] = 0.035
-    posture.points[0].positions[1] = 0.035
+    posture.points[0].positions[0] = 0.0343
+    posture.points[0].positions[1] = 0.0343
     posture.points[0].time_from_start = rospy.Duration(0.5)
 
 # metodo responsavel por pegar o objeto
@@ -211,15 +211,15 @@ def place(group):
     DISTANCIA_LINK_EFETOR = 0.058
      # Usa a posição da mesa 2 como referencia para o place
     ref_pose = Pose()
-    hand_pose = move_group.get_current_pose("panda_link7").pose
+    hand_pose = move_group.get_current_pose("panda_link0").pose
     ref_pose.position = deepcopy(POSICAO_MESA2)
     ref_pose.position.z += DIMENSOES_MESA2.z/2 +DIMENSOES_CUBO.z/2+ DISTANCIA_SEGURANCA + DISTANCIA_LINK_EFETOR
     # Usa da orientação original da mão
     #orientation = quaternion_from_euler(0, 0, math.pi / 2)
-    ref_pose.orientation = hand_pose.orientation
-    eixoz = Vector3(0,0,1)
+    ref_pose.orientation = deepcopy(hand_pose.orientation)
+    #eixoz = Vector3(0,0,1)
     #retorna a orientação do panda hand rotacionada em 180 no eixo z
-    ref_pose.orientation = rotate_orientation_quaternion(ref_pose.orientation,eixoz,math.pi)
+    #ref_pose.orientation = rotate_orientation_quaternion(ref_pose.orientation,eixoz,-math.pi/2)
     #vetor de lugares para tentar colocar o objeto manipulado, porém aqui será somente um lugar
     place_location = [PlaceLocation() for i in range(1)]
 
@@ -232,7 +232,7 @@ def place(group):
     # estabelecendo a abordagem pre-place em relação ao frame_id com a direção em z negativa 
     place_location[0].pre_place_approach.direction.header.frame_id = "panda_link0"
     place_location[0].pre_place_approach.direction.vector.z = -1.0
-    place_location[0].pre_place_approach.min_distance = 0.05
+    place_location[0].pre_place_approach.min_distance = 0.095
     place_location[0].pre_place_approach.desired_distance = 0.115
 
     # estabelecendo o recuo post-grasp em relaçaõ ao frame_id
@@ -388,3 +388,4 @@ if __name__ == "__main__":
       target_object_positions[CURRENT_POSITION_INDEX].z,
       time.time() - start_time - delay)
     )
+
