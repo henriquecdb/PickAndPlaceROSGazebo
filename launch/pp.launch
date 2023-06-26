@@ -16,7 +16,7 @@
     <arg name="use_gripper" default="$(arg load_gripper)" />
     <arg name="controller" default="$(arg transmission)_joint_trajectory_controller" />
     <arg name="world" value="$(find pp_gazebo)/worlds/meu_mundo.world" doc="Filename to a SDF World for gazebo to use" />
-    <arg name="x"           value="-0.3"     doc="How far forward to place the base of the robot in [m]?" />
+    <arg name="x"           value="0"     doc="How far forward to place the base of the robot in [m]?" />
     <arg name="y"           value="0"     doc="How far leftwards to place the base of the robot in [m]?" />
     <arg name="z"           value="0"     doc="How far upwards to place the base of the robot in [m]?" />
   </include>
